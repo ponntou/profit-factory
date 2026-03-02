@@ -1,0 +1,13 @@
+# gitignore for Obsidian Vault
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Obsidian settings
+.obsidian/
+
+# Personal/Temporary files
+repos/
+.gemini/
+.python-version
