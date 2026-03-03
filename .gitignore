@@ -11,3 +11,7 @@ Thumbs.db
 repos/
 .gemini/
 .python-version
+
+.obsidian/workspace.json
+.obsidian/cache/
+*.sync-conflict-*
