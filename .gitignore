@@ -4,14 +4,17 @@
 .DS_Store
 Thumbs.db
 
-# Obsidian settings
+# Git管理からrepos/ディレクトリを除外する
+repos/
 .obsidian/
 
+# Windows OS generated files
+*:Zone.Identifier
+
+# Antigravity IDEの内部ファイルとキャッシュを除外
+.antigravity-server/
+.vscode/
+
 # Personal/Temporary files
-repos/
 .gemini/
 .python-version
-
-.obsidian/workspace.json
-.obsidian/cache/
-*.sync-conflict-*
