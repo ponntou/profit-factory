@@ -1,0 +1,25 @@
+{
+  "name": "Profit Factory Development (MCP, Unity, Obsidian)",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-dotnettools.csharp",
+        "eamodio.gitlens",
+        "github.copilot",
+        "github.copilot-chat",
+        "Unity.unity-debug"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "postCreateCommand": "npm install -g @modelcontextprotocol/sdk && pip install mcp"
+}

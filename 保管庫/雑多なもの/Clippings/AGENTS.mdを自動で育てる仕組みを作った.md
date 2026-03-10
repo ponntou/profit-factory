@@ -1,0 +1,141 @@
+---
+title: "AGENTS.mdを自動で育てる仕組みを作った"
+source: "https://nyosegawa.github.io/posts/agents-md-generator/"
+author:
+  - "[[逆瀬川ちゃんのブログ]]"
+published: 2026-02-15
+created: 2026-03-09
+description: "新規リポジトリをcloneしたら勝手にAGENTS.mdが生えてきて、プロジェクトと一緒に育っていく仕組みをシェルラッパーで作った話"
+tags:
+  - "clippings"
+---
+こんにちは！逆瀬川 ([@gyakuse](https://x.com/gyakuse)) です！
+
+今日は「AGENTS.mdを自動で育てたい」という話をしていきたいと思います。作ったものは [agents-md-generator](https://github.com/nyosegawa/agents-md-generator) として公開しています。
+
+Coding Agentを日常的に使っていると、新しいリポジトリを作るたびに頭を悩ませるものがあります。CLAUDE.md（あるいはAGENTS.md）です。
+
+何を書くか毎回考えるのがまずつらい。プロジェクトのビルドコマンドは？テストの走らせ方は？コード規約は？まだ何もコードがない段階でこれを考えるのは不毛です。かといって空のまま放置すると、Coding Agentが手探りで動くことになって効率が悪い。
+
+もっと根本的な問題もあります。CLAUDE.mdは書いた瞬間から劣化し始めます。プロジェクトが進めばコマンドは変わるし、アーキテクチャも変わる。でも人間はCLAUDE.mdの更新を忘れます。古くなった指示はエージェントのコンテキストを汚染して、むしろ書かないほうがマシな状態になります。
+
+理想は「最初に種を蒔いたら勝手に育っていく」AGENTS.mdです。プロジェクトの初期は足場だけあればよくて、コードが増えるにつれて自然に中身が充実していくようなもの。
+
+まず前提として、 [AGENTS.md](https://agents.md/) はAIコーディングエージェント向けの設定ファイルです。GitHub上で60,000以上のリポジトリに採用されていて、OpenAI Codex、Google Jules、Cursor、Zed、GitHub Copilot、Gemini CLIなど主要なCoding Agentが対応しています。Linux Foundation傘下の [Agentic AI Foundation](https://openai.com/index/agentic-ai-foundation/) が管理する事実上の標準フォーマットです。Claude CodeはCLAUDE.mdを読みますが、AGENTS.mdとシンボリンクを張れば1ファイルで全ツールに対応できます。
+
+さて、このAGENTS.mdに何を書くべきか。ここが一番大事なところです。
+
+LLMが確実に従える指示の数には上限があります。フロンティアモデルで150〜200個程度と言われていて、Coding Agentのシステムプロンプトがすでにその多くを消費しています。AGENTS.mdの指示はその残り枠を奪い合うことになります。
+
+しかも指示が増えたときの劣化は均一に起こります。特定の指示だけ無視されるのではなく、全体のinstruction-followingが下がる。 [AnthropicのClaude Code Best Practices](https://code.claude.com/docs/en/best-practices) でも「CLAUDE.mdが長すぎるとClaudeは半分を無視する」と指摘されていて、 [HumanLayerのガイド](https://www.humanlayer.dev/blog/writing-a-good-claude-md) でも「可能な限り少ない指示にすべき」と書かれています。
+
+つまり「何を書くか」より「何を書かないか」のほうが重要です。AGENTS.mdの指示量バジェットは20〜30行が目安になります。
+
+| 書くべきもの | 書くべきでないもの |
+| --- | --- |
+| コードから推測できないプロジェクト固有の判断 | コードスタイルのルール（リンターに任せる） |
+| 非自明なビルド・テストコマンド | ディレクトリ構造の説明（すぐ変わる） |
+| 重要なgotchaやfootgun | 汎用的なプログラミングのアドバイス |
+| ドメイン固有の用語 | 「Important Context」のようなキャッチオールセクション |
+
+とくにキャッチオールセクションは危険です。「Important Context」みたいなセクションを作るとゴミ箱化して、あっという間にバジェットを食い潰します。
+
+ここが一番見落とされがちなポイントです。AGENTS.mdは`.gitignore` のような「一度書いたら終わり」の設定ファイルではなく、プロジェクトと一緒に変化し続ける生きたドキュメントです。
+
+- コマンドが変わったらすぐ更新する
+- アーキテクチャが大きく変わったら全部書き直す
+- エージェントがコードから推測できるようになった情報は消す
+
+古い指示を残しておくのは害しかありません。6ヶ月前のアーキテクチャの説明がCLAUDE.mdに残っていたら、エージェントは間違った場所を探し、間違ったパターンを提案してきます。
+
+ここまでの話をまとめると、AGENTS.mdに必要な性質は3つです。
+
+1. プロジェクト開始時に最低限の足場がある
+2. 指示量バジェットを意識した構造になっている
+3. 育てること・刈り込むことを前提とした設計になっている
+
+これを実現するために [agents-md-generator](https://github.com/nyosegawa/agents-md-generator) を作りました。空リポジトリをcloneした瞬間にAGENTS.md（とCLAUDE.mdシンボリンク）が自動生成されます。
+
+生成されるテンプレートにはいくつかの設計判断を入れています。
+
+```markdown
+## Core Principles
+
+- **Do NOT maintain backward compatibility** unless explicitly requested. Break things boldly.
+- **Keep this file under 20-30 lines of instructions.** Every line competes for the agent's limited context budget (~150-200 total).
+```
+
+「後方互換性を捨てること」と「20-30行バジェット」はプロジェクトのフェーズに関係なく常に有効なルールです。当初はセクション見出しのない太字テキストとして冒頭に置いていましたが、見出しのない浮遊テキストはエージェントにとって構造的に曖昧で、扱いを迷わせることがわかりました。 `## Core Principles` として明確にセクション化しています。
+
+Project Overview、Commands、Code Conventions、Architectureの各セクションはプレースホルダーとして置いています。ここに具体的な内容を書き込んでいくのですが、重要なのは埋めたらプレースホルダーのコメントを消すこと。プレースホルダー自体がバジェットを消費するからです。
+
+テンプレート内で唯一「消すな」と位置づけているのがMaintenance Notesセクションです。
+
+```markdown
+## Maintenance Notes
+
+<!-- This section is permanent. Do not delete. -->
+
+**Keep this file lean and current:**
+
+1. **Remove placeholder sections** (sections still containing \`[To be determined]\` or \`[Add your ... here]\`) once you fill them in
+2. **Review regularly** - stale instructions poison the agent's context
+3. **CRITICAL: Keep total under 20-30 lines** - move detailed docs to separate files and reference them
+4. **Update commands immediately** when workflows change
+5. **Rewrite Architecture section** when major architectural changes occur
+6. **Delete anything the agent can infer** from your code
+```
+
+AGENTS.mdが「設定ファイル」と誤解されて放置されるのを防ぐためのリマインダーです。ここで重要なのは `<!-- This section is permanent. Do not delete. -->` というHTMLコメントです。実際に運用していて、「Remove placeholder sections」「Delete anything the agent can infer」というルールをエージェントがMaintenance Notesセクション自体に適用してしまい、セクションごと削除されるケースがありました。HTMLコメントで明示的に保護し、「placeholder sections」の定義も `[To be determined]` や `[Add your ... here]` を含むセクションと具体化することで、この自己参照的な削除を防いでいます。
+
+テンプレートにはもう一つ、ファイル冒頭にHTMLコメントを入れています。
+
+```markdown
+# Agent Guidelines
+
+<!-- Do not restructure or delete sections. Update individual values in-place when they change. -->
+```
+
+エージェントにプロジェクトの作業を任せていると、AGENTS.md自体の構造を「改善」しようとして大幅にリライトされることがあります。各セクションにはインラインのHTMLコメントで更新ルールを書いていますが、構造ごと書き換えられるとインラインコメントも一緒に消えます。冒頭のコメントは、個別セクションの保護が機能するための外壁です。
+
+（※以前ここで書いていたgit hook方式は、空リポジトリのclone時に `post-checkout` が発火しないというgitの仕様を見落としていたため、シェルラッパー方式に修正しました）
+
+実現方法自体はシンプルで、 `git()` と `ghq()` のシェルラッパー関数を定義して、clone/getの完了後にAGENTS.mdを生成するだけです。
+
+`.bashrc` や`.zshrc` でスクリプトをsourceすると、 `git` コマンドと `ghq` コマンドが薄いラッパー関数で上書きされます。内部では `command git` / `command ghq` で本物のコマンドを呼び、cloneが成功したあとにclone先ディレクトリを特定して「空リポジトリならAGENTS.mdを生成する」というロジックが走ります。ghqはGoバイナリなので内部のgit呼び出しはシェル関数を経由しませんが、 `ghq()` ラッパーがghq自体の完了後にseed処理を実行するので問題ありません。
+
+```bash
+# セットアップ（ghqを使っている場合）
+ghq get nyosegawa/agents-md-generator
+
+# .zshrc / .bashrc に追加
+source "$(ghq root)/github.com/nyosegawa/agents-md-generator/agents-md-seed.sh"
+```
+
+これ以降、空リポジトリをcloneすると自動でAGENTS.mdとCLAUDE.md（シンボリンク）が生成されます。ghqでも動きます。
+
+```bash
+# 普通のclone
+git clone git@github.com:yourname/new-repo.git
+# → AGENTS.md と CLAUDE.md が生えている
+
+# ghqでも同じ
+ghq get yourname/new-repo
+# → 同様に生成される
+```
+
+当初はgitの `post-checkout` hookと `init.templateDir` を組み合わせる方式で実装していましたが、コミットが0件のリポジトリをcloneした場合にcheckoutが発生せずhookが発火しないことがわかりました。gitには `post-clone` に相当するhookが存在しないため、シェルラッパー方式に切り替えています。
+
+判定ロジックは「`.git` を除いてルート直下の項目が3個未満なら空とみなす」としているので、READMEとLICENSEだけのリポジトリにも生成されます。既存のコードがあるリポジトリやAGENTS.mdがすでにあるリポジトリでは何もしません。テンプレートをカスタマイズしたい場合は、 `~/.config/agents-md/template.md` にファイルを置くか、環境変数 `AGENTS_MD_TEMPLATE` でパスを指定できます。
+
+- AGENTS.mdは設定ファイルではなく生きたドキュメント。20-30行のバジェットを守り、育てて刈り込むことを前提に運用する
+- [agents-md-generator](https://github.com/nyosegawa/agents-md-generator) で、cloneした瞬間に育てるための足場が自動生成されるようにした
+- 実現方法はgitコマンドのシェルラッパー。`.bashrc` /`.zshrc` にsource一行で完結する
+- [@kenn - 後方互換性についてのツイート](https://x.com/kenn/status/2022862500958765227)
+- [agents-md-generator (GitHub)](https://github.com/nyosegawa/agents-md-generator)
+- [AGENTS.md 公式サイト](https://agents.md/)
+- [AGENTS.md GitHub リポジトリ](https://github.com/agentsmd/agents.md)
+- [AGENTS.md Emerges as Open Standard for AI Coding Agents (InfoQ)](https://www.infoq.com/news/2025/08/agents-md/)
+- [Best Practices for Claude Code](https://code.claude.com/docs/en/best-practices)
+- [Writing a good CLAUDE.md (HumanLayer)](https://www.humanlayer.dev/blog/writing-a-good-claude-md)
+- [agents-md-seed.sh (GitHub)](https://github.com/nyosegawa/agents-md-generator/blob/main/agents-md-seed.sh)
